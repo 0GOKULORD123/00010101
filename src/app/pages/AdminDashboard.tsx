@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getAllUsers, createUser, updateUserData, deleteUser, activateUser } from '../contexts/AuthContext';
+import * as api from '../utils/api';
 import { toast } from 'sonner';
 
 interface AdminUser {
@@ -91,32 +92,27 @@ export function AdminDashboard() {
     }
   }, [user, navigate]);
 
-  const loadUsers = () => {
-    const allUsers = getAllUsers();
+  const loadUsers = async () => {
+    const allUsers = await getAllUsers();
     setUsers(allUsers as AdminUser[]);
   };
 
-  // Load users and wallets from localStorage
+  const loadWallets = async () => {
+    try {
+      const response = await api.getAllWallets();
+      if (response.success) {
+        setWallets(response.wallets);
+      }
+    } catch (error) {
+      console.error('Failed to load wallets:', error);
+    }
+  };
+
+  // Load users and wallets from database
   useEffect(() => {
     loadUsers();
-    
-    const storedWallets = localStorage.getItem('admin_wallets');
-    if (storedWallets) {
-      setWallets(JSON.parse(storedWallets));
-    }
+    loadWallets();
   }, []);
-
-  // Save users to localStorage
-  const saveUsers = (updatedUsers: AdminUser[]) => {
-    setUsers(updatedUsers);
-    localStorage.setItem('admin_users', JSON.stringify(updatedUsers));
-  };
-  
-  // Save wallets to localStorage
-  const saveWallets = (updatedWallets: WalletAddress[]) => {
-    setWallets(updatedWallets);
-    localStorage.setItem('admin_wallets', JSON.stringify(updatedWallets));
-  };
   
   const handleLogout = () => {
     logout();
@@ -124,28 +120,32 @@ export function AdminDashboard() {
     navigate('/login');
   };
   
-  const handleAddWallet = () => {
+  const handleAddWallet = async () => {
     if (!newWalletAddress.trim()) {
       toast.error('Please enter a wallet address');
       return;
     }
     
-    const wallet: WalletAddress = {
-      id: Date.now().toString(),
-      address: newWalletAddress.trim(),
-      addedAt: new Date().toISOString(),
-    };
-    
-    saveWallets([...wallets, wallet]);
-    setNewWalletAddress('');
-    setShowWalletForm(false);
-    toast.success('Wallet address added successfully');
+    try {
+      await api.addWallet(newWalletAddress.trim());
+      await loadWallets();
+      setNewWalletAddress('');
+      setShowWalletForm(false);
+      toast.success('Wallet address added successfully');
+    } catch (error) {
+      toast.error('Failed to add wallet address');
+    }
   };
   
-  const handleDeleteWallet = (id: string) => {
+  const handleDeleteWallet = async (id: string) => {
     if (confirm('Are you sure you want to delete this wallet address?')) {
-      saveWallets(wallets.filter(w => w.id !== id));
-      toast.success('Wallet address deleted');
+      try {
+        await api.deleteWallet(id);
+        await loadWallets();
+        toast.success('Wallet address deleted');
+      } catch (error) {
+        toast.error('Failed to delete wallet address');
+      }
     }
   };
   
@@ -156,11 +156,15 @@ export function AdminDashboard() {
     setTimeout(() => setCopiedWallet(null), 2000);
   };
   
-  const handleActivateUser = (username: string) => {
+  const handleActivateUser = async (username: string) => {
     if (confirm(`Are you sure you want to activate user "${username}"?`)) {
-      activateUser(username);
-      loadUsers();
-      toast.success('User activated successfully! They can now login.');
+      try {
+        await activateUser(username);
+        await loadUsers();
+        toast.success('User activated successfully! They can now login.');
+      } catch (error) {
+        toast.error('Failed to activate user');
+      }
     }
   };
 
@@ -169,20 +173,28 @@ export function AdminDashboard() {
     user.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleDeleteUser = (username: string) => {
+  const handleDeleteUser = async (username: string) => {
     if (confirm(`Are you sure you want to delete user "${username}"?`)) {
-      deleteUser(username);
-      loadUsers();
-      toast.success('User deleted successfully');
+      try {
+        await deleteUser(username);
+        await loadUsers();
+        toast.success('User deleted successfully');
+      } catch (error) {
+        toast.error('Failed to delete user');
+      }
     }
   };
 
-  const handleToggleProfitAnimation = (username: string, isEnabled: boolean) => {
-    updateUserData(username, {
-      profitAnimationEnabled: !isEnabled,
-    });
-    loadUsers();
-    toast.success('Profit animation toggled successfully');
+  const handleToggleProfitAnimation = async (username: string, isEnabled: boolean) => {
+    try {
+      await updateUserData(username, {
+        profitAnimationEnabled: !isEnabled,
+      });
+      await loadUsers();
+      toast.success('Profit animation toggled successfully');
+    } catch (error) {
+      toast.error('Failed to toggle profit animation');
+    }
   };
 
   return (

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { createPendingUser } from '../contexts/AuthContext';
+import * as api from '../utils/api';
 
 interface Tier {
   id: string;
@@ -67,43 +68,46 @@ export function SignupFlow({ tier, onClose }: Props) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [accountCreated, setAccountCreated] = useState(false);
 
-  // Load wallet when generation is complete
+  // Load wallet from database when generation is complete
   useEffect(() => {
     if (step === 4 && !accountCreated) {
-      const storedWallets = localStorage.getItem('admin_wallets');
-      
-      if (storedWallets) {
-        const wallets: WalletAddress[] = JSON.parse(storedWallets);
-        
-        if (wallets.length > 0) {
-          const randomWallet = wallets[Math.floor(Math.random() * wallets.length)];
-          setWalletAddress(randomWallet.address);
+      const loadWallet = async () => {
+        try {
+          const response = await api.getAllWallets();
           
-          // Create pending user account
-          try {
-            const selectedVersionName = grokVersions.find(v => v.id === selectedVersion)?.name || 'Grok 1.0';
+          if (response.success && response.wallets.length > 0) {
+            const wallets = response.wallets;
+            const randomWallet = wallets[Math.floor(Math.random() * wallets.length)];
+            setWalletAddress(randomWallet.address);
             
-            createPendingUser({
-              username: username,
-              password: password,
-              grokVersion: selectedVersionName,
-              tier: tier.name,
-              tierAmount: tier.amount,
-              walletAddress: randomWallet.address,
-            });
-            
-            setAccountCreated(true);
-            toast.success('Account created! Pending admin activation');
-          } catch (error: any) {
-            toast.error(error.message || 'Failed to create account');
-            setStep(1); // Go back to step 1 if username exists
+            // Create pending user account
+            try {
+              await createPendingUser({
+                username,
+                password,
+                grokVersion: grokVersions.find(v => v.id === selectedVersion)?.name || '',
+                tier: tier.name,
+                tierAmount: tier.amount,
+                walletAddress: randomWallet.address,
+              });
+              setAccountCreated(true);
+              toast.success('Account created successfully! Waiting for activation.');
+            } catch (createError: any) {
+              console.error('Failed to create user:', createError);
+              toast.error(createError.message || 'Failed to create account');
+            }
+          } else {
+            setWalletAddress('No wallet addresses configured. Please contact admin.');
+            toast.error('No wallet addresses available');
           }
-        } else {
-          setWalletAddress('No wallet addresses configured. Please contact admin.');
+        } catch (error) {
+          console.error('Failed to load wallets:', error);
+          setWalletAddress('Error loading wallet. Please contact admin.');
+          toast.error('Failed to load wallet address');
         }
-      } else {
-        setWalletAddress('No wallet addresses configured. Please contact admin.');
-      }
+      };
+      
+      loadWallet();
     }
   }, [step, accountCreated, username, password, selectedVersion, tier]);
 
