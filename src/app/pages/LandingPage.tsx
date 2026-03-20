@@ -4,6 +4,7 @@ import { Hero } from '../components/Hero';
 import { HowItWorks } from '../components/HowItWorks';
 import { LiveTradingSimulation } from '../components/LiveTradingSimulation';
 import { PricingTiers } from '../components/PricingTiers';
+import { LiveActivityFeed } from '../components/LiveActivityFeed';
 import { LegalSection } from '../components/LegalSection';
 import { Footer } from '../components/Footer';
 
@@ -17,6 +18,7 @@ export function LandingPage() {
         <HowItWorks />
         <LiveTradingSimulation />
         <PricingTiers />
+        <LiveActivityFeed />
         <LegalSection />
       </main>
       <Footer />
