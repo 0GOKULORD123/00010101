@@ -20,6 +20,7 @@ import {
   Edit2,
   X,
   User,
+  Shield,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getAllUsers, createUser, updateUserData, deleteUser, activateUser } from '../contexts/AuthContext';
@@ -57,11 +58,23 @@ interface WalletAddress {
   addedAt: string;
 }
 
+interface SubAdmin {
+  id: string;
+  username: string;
+  email: string;
+  password: string;
+  role: 'admin';
+  isMainAdmin: boolean;
+  status: 'active' | 'pending';
+  createdAt: string;
+}
+
 export function AdminDashboard() {
-  const { user, logout } = useAuth();
+  const { user, logout, isMainAdmin } = useAuth();
   const navigate = useNavigate();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [wallets, setWallets] = useState<WalletAddress[]>([]);
+  const [subAdmins, setSubAdmins] = useState<SubAdmin[]>([]);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -84,6 +97,12 @@ export function AdminDashboard() {
   // New wallet form
   const [newWalletAddress, setNewWalletAddress] = useState('');
   const [showWalletForm, setShowWalletForm] = useState(false);
+
+  // New sub-admin form
+  const [showSubAdminForm, setShowSubAdminForm] = useState(false);
+  const [newSubAdminUsername, setNewSubAdminUsername] = useState('');
+  const [newSubAdminPassword, setNewSubAdminPassword] = useState('');
+  const [newSubAdminEmail, setNewSubAdminEmail] = useState('');
 
   // Check if user is admin
   useEffect(() => {
@@ -108,11 +127,25 @@ export function AdminDashboard() {
     }
   };
 
+  const loadSubAdmins = async () => {
+    if (!isMainAdmin) return; // Only main admin can see sub-admins
+    
+    try {
+      const response = await api.getAllSubAdmins();
+      if (response.success) {
+        setSubAdmins(response.admins);
+      }
+    } catch (error) {
+      console.error('Failed to load sub-admins:', error);
+    }
+  };
+
   // Load users and wallets from database
   useEffect(() => {
     loadUsers();
     loadWallets();
-  }, []);
+    loadSubAdmins();
+  }, [isMainAdmin]);
   
   const handleLogout = () => {
     logout();
@@ -197,6 +230,50 @@ export function AdminDashboard() {
     }
   };
 
+  // Sub-admin management functions
+  const handleCreateSubAdmin = async () => {
+    if (!newSubAdminUsername.trim()) {
+      toast.error('Please enter a username');
+      return;
+    }
+    if (!newSubAdminPassword.trim()) {
+      toast.error('Please enter a password');
+      return;
+    }
+    if (newSubAdminPassword.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return;
+    }
+
+    try {
+      await api.createSubAdmin({
+        username: newSubAdminUsername.trim(),
+        password: newSubAdminPassword,
+        email: newSubAdminEmail.trim() || undefined,
+      });
+      await loadSubAdmins();
+      setNewSubAdminUsername('');
+      setNewSubAdminPassword('');
+      setNewSubAdminEmail('');
+      setShowSubAdminForm(false);
+      toast.success('Sub-admin created successfully');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to create sub-admin');
+    }
+  };
+
+  const handleDeleteSubAdmin = async (username: string) => {
+    if (confirm(`Are you sure you want to delete sub-admin "${username}"? They will lose access immediately.`)) {
+      try {
+        await api.deleteSubAdmin(username);
+        await loadSubAdmins();
+        toast.success('Sub-admin deleted successfully');
+      } catch (error: any) {
+        toast.error(error.message || 'Failed to delete sub-admin');
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen bg-black text-white">
       {/* Background effects */}
@@ -219,8 +296,16 @@ export function AdminDashboard() {
               <span className="text-xl sm:text-2xl font-bold text-white tracking-tight">
                 GROK AI
               </span>
-              <div className="px-3 py-1 bg-red-500/20 border border-red-500/30 rounded-lg">
-                <span className="text-red-400 text-xs font-bold">ADMIN</span>
+              <div className={`px-3 py-1 rounded-lg ${
+                isMainAdmin 
+                  ? 'bg-red-500/20 border border-red-500/30' 
+                  : 'bg-blue-500/20 border border-blue-500/30'
+              }`}>
+                <span className={`text-xs font-bold ${
+                  isMainAdmin ? 'text-red-400' : 'text-blue-400'
+                }`}>
+                  {isMainAdmin ? 'MAIN ADMIN' : 'SUB-ADMIN'}
+                </span>
               </div>
             </div>
 
@@ -296,19 +381,25 @@ export function AdminDashboard() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
               <div>
                 <h2 className="text-lg sm:text-xl font-bold text-white mb-1">Wallet Management</h2>
-                <p className="text-xs sm:text-sm text-white/60">Manage wallet addresses shown to users when they select a plan</p>
+                <p className="text-xs sm:text-sm text-white/60">
+                  {isMainAdmin 
+                    ? 'Manage wallet addresses shown to users when they select a plan' 
+                    : 'View wallet addresses shown to users (Main Admin manages these)'}
+                </p>
               </div>
-              <button
-                onClick={() => setShowWalletForm(!showWalletForm)}
-                className="flex items-center gap-2 px-4 py-2 bg-green-500 text-black hover:bg-green-400 rounded-lg font-medium transition-all text-sm"
-              >
-                <Plus className="w-4 h-4" />
-                Add Wallet
-              </button>
+              {isMainAdmin && (
+                <button
+                  onClick={() => setShowWalletForm(!showWalletForm)}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-500 text-black hover:bg-green-400 rounded-lg font-medium transition-all text-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Wallet
+                </button>
+              )}
             </div>
 
-            {/* Add Wallet Form */}
-            {showWalletForm && (
+            {/* Add Wallet Form - Only for Main Admin */}
+            {showWalletForm && isMainAdmin && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
@@ -351,7 +442,11 @@ export function AdminDashboard() {
               <div className="text-center py-12">
                 <Wallet className="w-12 h-12 text-white/20 mx-auto mb-3" />
                 <p className="text-white/40 text-sm">No wallet addresses added yet</p>
-                <p className="text-white/30 text-xs mt-1">Add wallet addresses to show them to users</p>
+                <p className="text-white/30 text-xs mt-1">
+                  {isMainAdmin 
+                    ? 'Add wallet addresses to show them to users' 
+                    : 'Main admin will add wallet addresses'}
+                </p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -390,13 +485,15 @@ export function AdminDashboard() {
                           </>
                         )}
                       </button>
-                      <button
-                        onClick={() => handleDeleteWallet(wallet.id)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-lg transition-all text-xs sm:text-sm text-red-500"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        Delete
-                      </button>
+                      {isMainAdmin && (
+                        <button
+                          onClick={() => handleDeleteWallet(wallet.id)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-lg transition-all text-xs sm:text-sm text-red-500"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </motion.div>
                 ))}
@@ -601,6 +698,121 @@ export function AdminDashboard() {
               </div>
             </div>
           </div>
+
+          {/* Sub-admin Management Section */}
+          {isMainAdmin && (
+            <div className="p-4 sm:p-6 md:p-8 rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+                <div>
+                  <h2 className="text-lg sm:text-xl font-bold text-white mb-1">Sub-admin Management</h2>
+                  <p className="text-xs sm:text-sm text-white/60">Create and manage sub-admin accounts</p>
+                </div>
+                <button
+                  onClick={() => setShowSubAdminForm(!showSubAdminForm)}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-500 text-black hover:bg-green-400 rounded-lg font-medium transition-all text-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  Create Sub-admin
+                </button>
+              </div>
+
+              {/* Add Sub-admin Form */}
+              {showSubAdminForm && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mb-6 p-4 sm:p-6 rounded-xl bg-white/5 border border-white/10"
+                >
+                  <h3 className="text-white font-bold mb-4 text-sm sm:text-base">Add New Sub-admin</h3>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <input
+                      type="text"
+                      placeholder="Enter username"
+                      value={newSubAdminUsername}
+                      onChange={(e) => setNewSubAdminUsername(e.target.value)}
+                      className="flex-1 px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/40 focus:outline-none focus:border-green-500/50 text-sm"
+                    />
+                    <input
+                      type="password"
+                      placeholder="Enter password"
+                      value={newSubAdminPassword}
+                      onChange={(e) => setNewSubAdminPassword(e.target.value)}
+                      className="flex-1 px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/40 focus:outline-none focus:border-green-500/50 text-sm"
+                    />
+                    <input
+                      type="email"
+                      placeholder="Enter email (optional)"
+                      value={newSubAdminEmail}
+                      onChange={(e) => setNewSubAdminEmail(e.target.value)}
+                      className="flex-1 px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/40 focus:outline-none focus:border-green-500/50 text-sm"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleCreateSubAdmin}
+                        className="flex items-center gap-2 px-4 py-2 bg-green-500 text-black hover:bg-green-400 rounded-lg font-medium transition-all text-sm"
+                      >
+                        <Save className="w-4 h-4" />
+                        Save
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowSubAdminForm(false);
+                          setNewSubAdminUsername('');
+                          setNewSubAdminPassword('');
+                          setNewSubAdminEmail('');
+                        }}
+                        className="px-4 py-2 bg-white/5 text-white hover:bg-white/10 rounded-lg font-medium transition-all text-sm"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Sub-admins List */}
+              {subAdmins.length === 0 ? (
+                <div className="text-center py-12">
+                  <Shield className="w-12 h-12 text-white/20 mx-auto mb-3" />
+                  <p className="text-white/40 text-sm">No sub-admins added yet</p>
+                  <p className="text-white/30 text-xs mt-1">Add sub-admins to manage the platform</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {subAdmins.map((subAdmin) => (
+                    <motion.div
+                      key={subAdmin.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10 hover:border-green-500/30 transition-all gap-3"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Shield className="w-4 h-4 text-green-500 flex-shrink-0" />
+                          <code className="text-white font-mono text-xs sm:text-sm break-all">
+                            {subAdmin.username}
+                          </code>
+                        </div>
+                        <p className="text-white/40 text-xs">
+                          Added {new Date(subAdmin.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 self-end sm:self-auto">
+                        <button
+                          onClick={() => handleDeleteSubAdmin(subAdmin.username)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-lg transition-all text-xs sm:text-sm text-red-500"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Delete
+                        </button>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </motion.div>
       </main>
 

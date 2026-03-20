@@ -111,3 +111,26 @@ export async function deleteWallet(id: string) {
     method: 'DELETE',
   });
 }
+
+// ============= SUB-ADMIN API =============
+
+export async function getAllSubAdmins() {
+  return apiCall('/admins');
+}
+
+export async function createSubAdmin(adminData: {
+  username: string;
+  password: string;
+  email?: string;
+}) {
+  return apiCall('/admins/create', {
+    method: 'POST',
+    body: JSON.stringify(adminData),
+  });
+}
+
+export async function deleteSubAdmin(username: string) {
+  return apiCall(`/admins/${username}`, {
+    method: 'DELETE',
+  });
+}

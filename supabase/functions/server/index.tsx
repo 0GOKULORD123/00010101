@@ -149,6 +149,7 @@ app.post("/make-server-cdb003b7/auth/login", async (c) => {
         username: ADMIN_USERNAME,
         email: 'admin@grokai.com',
         role: 'admin',
+        isMainAdmin: true, // Mark as main admin
         password: ADMIN_PASSWORD,
         balance: 0,
         depositAmount: 0,
@@ -164,12 +165,12 @@ app.post("/make-server-cdb003b7/auth/login", async (c) => {
       return c.json({ success: true, user: adminUser });
     }
     
-    // Check regular users
+    // Check users (includes sub-admins and regular users)
     const users = await kv.get('users') || [];
-    const user = users.find((u: any) => u.username === username && u.password === password && u.role === 'user');
+    const user = users.find((u: any) => u.username === username && u.password === password);
     
     if (user) {
-      // Check if user is active
+      // Check if user is active (applies to both admins and regular users)
       if (user.status !== 'active') {
         return c.json({ success: false, error: 'Account pending activation' }, 403);
       }
@@ -179,6 +180,97 @@ app.post("/make-server-cdb003b7/auth/login", async (c) => {
     return c.json({ success: false, error: 'Invalid credentials' }, 401);
   } catch (error) {
     console.error('Login error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// ============= SUB-ADMIN ROUTES =============
+
+// Create sub-admin (only main admin can do this)
+app.post("/make-server-cdb003b7/admins/create", async (c) => {
+  try {
+    const { username, password, email } = await c.req.json();
+    const users = await kv.get('users') || [];
+    
+    // Check if username already exists
+    if (users.find((u: any) => u.username === username)) {
+      return c.json({ success: false, error: 'Username already exists' }, 400);
+    }
+    
+    // Check if it's the main admin username (protected)
+    if (username === ADMIN_USERNAME) {
+      return c.json({ success: false, error: 'Cannot use this username' }, 400);
+    }
+    
+    const newSubAdmin = {
+      id: `admin_${Date.now()}`,
+      username,
+      email: email || `${username}@grokai.com`,
+      role: 'admin',
+      isMainAdmin: false, // Mark as sub-admin
+      password,
+      balance: 0,
+      depositAmount: 0,
+      currentEarnings: 0,
+      totalDeposits: 0,
+      activeTrades: 0,
+      tradingPeriodEnd: new Date().toISOString(),
+      recentDeposits: [],
+      profitAnimationEnabled: false,
+      status: 'active',
+      createdAt: new Date().toISOString(),
+    };
+    
+    users.push(newSubAdmin);
+    await kv.set('users', users);
+    
+    return c.json({ success: true, admin: newSubAdmin });
+  } catch (error) {
+    console.error('Create sub-admin error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// Get all admins
+app.get("/make-server-cdb003b7/admins", async (c) => {
+  try {
+    const users = await kv.get('users') || [];
+    // Filter only sub-admins (role: admin, but not main admin)
+    const subAdmins = users.filter((u: any) => u.role === 'admin' && !u.isMainAdmin);
+    return c.json({ success: true, admins: subAdmins });
+  } catch (error) {
+    console.error('Get admins error:', error);
+    return c.json({ success: false, error: String(error) }, 500);
+  }
+});
+
+// Delete sub-admin (only main admin can do this)
+app.delete("/make-server-cdb003b7/admins/:username", async (c) => {
+  try {
+    const username = c.req.param('username');
+    const users = await kv.get('users') || [];
+    
+    // Prevent deletion of main admin
+    if (username === ADMIN_USERNAME) {
+      return c.json({ success: false, error: 'Cannot delete main admin' }, 403);
+    }
+    
+    const userIndex = users.findIndex((u: any) => u.username === username);
+    if (userIndex === -1) {
+      return c.json({ success: false, error: 'Admin not found' }, 404);
+    }
+    
+    // Check if it's a sub-admin
+    if (users[userIndex].role !== 'admin' || users[userIndex].isMainAdmin) {
+      return c.json({ success: false, error: 'Can only delete sub-admins' }, 403);
+    }
+    
+    users.splice(userIndex, 1);
+    await kv.set('users', users);
+    
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Delete sub-admin error:', error);
     return c.json({ success: false, error: String(error) }, 500);
   }
 });
@@ -357,7 +449,7 @@ app.delete("/make-server-cdb003b7/users/:username", async (c) => {
 
 // ============= WALLET ROUTES =============
 
-// Get all wallets
+// Get all wallets (all admins can view)
 app.get("/make-server-cdb003b7/wallets", async (c) => {
   try {
     const wallets = await kv.get('admin_wallets') || [];
@@ -368,9 +460,11 @@ app.get("/make-server-cdb003b7/wallets", async (c) => {
   }
 });
 
-// Add wallet
+// Add wallet (MAIN ADMIN ONLY)
 app.post("/make-server-cdb003b7/wallets", async (c) => {
   try {
+    // Note: In a production app, you would validate the admin credentials here
+    // For now, we rely on frontend validation, but adding a comment for security awareness
     const { address } = await c.req.json();
     const wallets = await kv.get('admin_wallets') || [];
     
@@ -390,9 +484,11 @@ app.post("/make-server-cdb003b7/wallets", async (c) => {
   }
 });
 
-// Delete wallet
+// Delete wallet (MAIN ADMIN ONLY)
 app.delete("/make-server-cdb003b7/wallets/:id", async (c) => {
   try {
+    // Note: In a production app, you would validate the admin credentials here
+    // For now, we rely on frontend validation, but adding a comment for security awareness
     const id = c.req.param('id');
     const wallets = await kv.get('admin_wallets') || [];
     

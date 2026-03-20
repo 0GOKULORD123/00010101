@@ -6,6 +6,7 @@ interface User {
   username: string;
   email: string;
   role: 'admin' | 'user';
+  isMainAdmin?: boolean; // Added to distinguish main admin from sub-admins
   password: string;
   balance: number;
   depositAmount: number;
@@ -30,6 +31,7 @@ interface User {
 interface AuthContextType {
   user: User | null;
   isAdmin: boolean;
+  isMainAdmin: boolean; // Added to check if user is main admin
   login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
   updateUser: (updates: Partial<User>) => void;
@@ -110,9 +112,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const isAdmin = user?.role === 'admin';
+  const isMainAdmin = user?.role === 'admin' && user?.isMainAdmin === true;
 
   return (
-    <AuthContext.Provider value={{ user, isAdmin, login, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, isAdmin, isMainAdmin, login, logout, updateUser }}>
       {isInitialized ? children : <div>Loading...</div>}
     </AuthContext.Provider>
   );
